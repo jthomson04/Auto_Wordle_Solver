@@ -115,7 +115,7 @@ class WordleSolver:
 
         best_guess = ""
         best_val = -999999999999999999999999999999
-        if len(potential_words) == 1:
+        if len(potential_words) == 1 or len(potential_words) == 2:
             return potential_words[0]
         for idx, possible_guess in tqdm(enumerate(self.words), total=len(self.words), unit="word"):
             temp_potential_words = deepcopy(potential_words)
