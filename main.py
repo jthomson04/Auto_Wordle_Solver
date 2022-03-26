@@ -3,10 +3,8 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.chrome.service import Service
 from time import sleep
-from itertools import chain
 from math import log2
 from itertools import product
-import datetime
 from tqdm import tqdm
 import requests
 import ast
@@ -64,8 +62,37 @@ class WordleSolver:
         def map_val(d, key):
             return d[key] if key in d else -1
 
-        reqs = []
+        idx_requirements = {}
 
+        for idx, cell in enumerate(row):
+            if cell.state == "correct":
+                if cell.letter in idx_requirements:
+                    idx_requirements[cell.letter].append(idx)
+                else:
+                    idx_requirements[cell.letter] = [idx]
+
+        for k in idx_requirements.keys():
+            potential_words = [word for word in potential_words if all(word[idx] == k for idx in idx_requirements[k])]
+
+        if not potential_words:
+            return []
+
+        yellow_exclusions = {}
+
+        for idx, cell in enumerate(row):
+            if cell.state == "present":
+                if cell.letter in yellow_exclusions:
+                    yellow_exclusions[cell.letter].append(idx)
+                else:
+                    yellow_exclusions[cell.letter] = [idx]
+
+        for k in yellow_exclusions.keys():
+            potential_words = [word for word in potential_words if all(word[idx] != k for idx in yellow_exclusions[k])]
+
+        if not potential_words:
+            return []
+
+        reqs = []
         row_req = {}
         for cell in row:
             if cell.state == "absent" and (cell.letter not in row_req or row_req[cell.letter] == 0):
@@ -86,39 +113,27 @@ class WordleSolver:
             potential_words = [word for word in potential_words if
                                (1 <= master_reqs[k][0] <= word.count(k) and not master_reqs[k][1]) or (1 <= master_reqs[k][0] == word.count(k) and master_reqs[k][1]) or (master_reqs[k][0] == 0 and word.count(k) == 0)]
 
-        idx_requirements = {}
-
-        for idx, cell in enumerate(row):
-            if cell.state == "correct":
-                if cell.letter in idx_requirements:
-                    idx_requirements[cell.letter].append(idx)
-                else:
-                    idx_requirements[cell.letter] = [idx]
-
-        for k in idx_requirements.keys():
-            potential_words = [word for word in potential_words if all(word[idx] == k for idx in idx_requirements[k])]
-
-        yellow_exclusions = {}
-
-        for idx, cell in enumerate(row):
-            if cell.state == "present":
-                if cell.letter in yellow_exclusions:
-                    yellow_exclusions[cell.letter].append(idx)
-                else:
-                    yellow_exclusions[cell.letter] = [idx]
-
-        for k in yellow_exclusions.keys():
-            potential_words = [word for word in potential_words if all(word[idx] != k for idx in yellow_exclusions[k])]
         return potential_words
 
-    def select_best_word(self, round, potential_words):
+    def select_best_word(self, potential_words, rows):
 
         best_guess = ""
         best_val = -999999999999999999999999999999
         if len(potential_words) == 1 or len(potential_words) == 2:
             return potential_words[0]
-        for idx, possible_guess in tqdm(enumerate(self.words), total=len(self.words), unit="word"):
+
+        seen_letters = []
+        for row in rows:
+            for cell in row:
+                if cell.letter not in seen_letters:
+                    seen_letters.append(cell.letter)
+
+        for idx, possible_guess in enumerate(tqdm(self.words, unit="word")):
             temp_potential_words = deepcopy(potential_words)
+
+            if len(rows) == 1 and sum([possible_guess.count(letter) for letter in seen_letters]) > 1:
+                continue
+
             vals = []
             for output_seq in product(["absent", "present", "correct"], repeat=5):
                 row = [WordleSolver.Cell(state=state, letter=letter) for state, letter in zip(output_seq, possible_guess)]
@@ -150,19 +165,19 @@ class WordleSolver:
                 print("yeet")
                 exit()
 
-            if round != 0:
-                potential_words = self.get_potential_wordlist(self.get_rows()[round - 1], potential_words)
-                print(f"Possible Words: {len(potential_words)}")
             if round == 0:
                 guess = "soare"
             else:
-                guess = self.select_best_word(round, potential_words)
+                potential_words = self.get_potential_wordlist(self.get_rows()[round - 1], potential_words)
+                print(f"Possible Words: {len(potential_words)}")
+                guess = self.select_best_word(potential_words, self.get_rows()[:round])
 
             for i in range(5):
                 body.send_keys(guess[i])
                 sleep(0.25)
             body.send_keys(Keys.RETURN)
             sleep(1.5)
+
 
 wordle = WordleSolver()
 wordle.play()
